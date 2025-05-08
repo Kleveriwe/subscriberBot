@@ -1,9 +1,8 @@
+import database
+import states
 from aiogram import Router, types, F
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
-
-import database
-import states
 from datetime import datetime, timezone, timedelta
 from utils import fmt_card, fmt_field, make_keyboard
 
@@ -11,47 +10,59 @@ router = Router()
 
 
 # -----------------------------
-# Пользовательский поток
+# Помощник для разбора callback_data
+# -----------------------------
+def parse_cd(data: str, prefix: str, parts: int = 1) -> list[str]:
+    """
+    Убирает префикс и разбивает строку по '_' не более чем на parts элементов.
+    """
+    payload = data.removeprefix(prefix)
+    items = payload.split("_", parts)
+    if len(items) < parts:
+        raise ValueError(f"Bad callback_data: {data}")
+    return items
+
+
+# -----------------------------
+# /start
 # -----------------------------
 @router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
 
-    text = message.text or ""
-    parts = text.split(maxsplit=1)
-
-    if len(parts) > 1:
+    # Если deep-link с ID: /start <channel_id>
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1:
         try:
-            channel_id = int(parts[1])
+            channel_id = int(args[1])
+            return await show_tariffs_for_channel(message, channel_id)
         except ValueError:
             return await message.answer(
-                "❗ Некорректный ID канала. Убедитесь, что у вас ссылка вида\n"
+                "❗ Некорректный ID канала.\n"
+                "Используйте ссылку вида:\n"
                 "`https://t.me/YourBot?start=-123456789`",
                 parse_mode="Markdown"
             )
-        return await show_tariffs_for_channel(message, channel_id)
 
-    # 2) Просто /start — показываем все три опции сразу
+    # Обычное приветствие
     bot_username = (await message.bot.me()).username
-    greeting = fmt_card(
+    text = fmt_card(
         "Привет!",
         [
-            "Я занимаюсь продажей подписок.",
+            "Я помогу вам купить доступ в закрытый канал.",
             "",
-            fmt_field("➕", "Добавить свой канал", "для продажи подписок"),
+            fmt_field("➕", "Добавить канал", "для продажи собственных подписок"),
         ]
     )
     kb = make_keyboard([
         ("➕ Добавить канал", "start_add_channel"),
     ], row_width=1)
-
-    await message.answer(greeting, parse_mode="HTML", reply_markup=kb)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data == "start_add_channel")
 async def start_add_channel(callback: types.CallbackQuery):
     await callback.answer()
-    # Перенаправляем пользователя на команду /add_my_channel
     await callback.message.answer(
         "Чтобы зарегистрировать свой канал и настроить тарифы, используйте команду:\n"
         "/add_my_channel",
@@ -59,104 +70,109 @@ async def start_add_channel(callback: types.CallbackQuery):
     )
 
 
+# -----------------------------
+# Ввод ID вручную
+# -----------------------------
 @router.callback_query(F.data == "enter_channel")
 async def enter_channel(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
-    prompt = fmt_card(
-        "Ввод ID канала",
-        ["Пожалуйста, отправьте числовой ID канала."]
-    )
+    text = fmt_card("Ввод ID канала", ["Пожалуйста, отправьте числовой ID канала."])
     kb = make_keyboard([("⬅️ Назад", "start")], row_width=1)
-    await callback.message.edit_text(prompt, parse_mode="HTML", reply_markup=kb)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await state.set_state(states.UserOrderState.WAITING_CHANNEL_ID)
 
 
 @router.message(states.UserOrderState.WAITING_CHANNEL_ID)
 async def process_channel_id(message: types.Message, state: FSMContext):
     text = message.text.strip()
-    try:
-        channel_id = int(text)
-    except ValueError:
-        return await message.answer("❗ Введите только числовой ID канала.")
+    if not text.isdigit() and not (text.startswith("-") and text[1:].isdigit()):
+        return await message.answer("❗ Введите корректный числовой ID канала.")
+    channel_id = int(text)
     await state.clear()
-    return await show_tariffs_for_channel(message, channel_id)
+    await show_tariffs_for_channel(message, channel_id)
 
 
+# -----------------------------
+# Показ тарифов
+# -----------------------------
 async def show_tariffs_for_channel(message: types.Message, channel_id: int):
     channel = database.get_channel(channel_id)
     if not channel:
-        return await message.answer("❗ Канал не найден. Попробуйте другой ID.", parse_mode="HTML")
+        return await message.answer("❗ Канал не найден. Проверьте ID.", parse_mode="HTML")
+
     tariffs = database.list_tariffs(channel_id)
     if not tariffs:
-        return await message.answer("ℹ️ В этом канале нет тарифов.", parse_mode="HTML")
+        return await message.answer("ℹ️ В этом канале нет доступных тарифов.", parse_mode="HTML")
 
     lines = [fmt_field("💎", t["title"], f"{t['duration_days']} дн — {t['price']}₽") for t in tariffs]
-    text = fmt_card(f"Тарифы канала «{channel['title']}»", lines)
+    text = fmt_card(f"Тарифы «{channel['title']}»", lines)
     kb = make_keyboard(
-        [(f"{t['title']}", f"buy_{channel_id}_{t['id']}") for t in tariffs],
+        [(t["title"], f"buy_{channel_id}_{t['id']}") for t in tariffs],
         row_width=1
     )
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
+# -----------------------------
+# Покупка тарифа
+# -----------------------------
 @router.callback_query(F.data.startswith("buy_"))
 async def callback_buy(callback: types.CallbackQuery, state: FSMContext):
-    # Разбираем callback_data вида buy_{channel_id}_{tariff_id}
-    raw = callback.data.removeprefix("buy_")
     try:
-        channel_str, tariff_str = raw.split("_", 1)
-        channel_id = int(channel_str)
-        tariff_id = int(tariff_str)
+        ch_str, tr_str = parse_cd(callback.data, "buy_", parts=1)[0].split("_", 1)
+        channel_id = int(ch_str)
+        tariff_id = int(tr_str)
     except Exception:
         return await callback.answer("❗ Ошибка данных", show_alert=True)
 
     user_id = callback.from_user.id
-    # Создаём заявку
     database.create_order(channel_id, user_id, tariff_id)
+
     channel = database.get_channel(channel_id)
     tariff = database.get_tariff(tariff_id)
-    # payment = channel.get("payment_info", "")
     lines = [
         f"Реквизиты: <code>{channel['payment_info']}</code>",
         "",
-        fmt_field("🛒", "Тариф", tariff['title']),
+        fmt_field("🛒", "Тариф", tariff["title"]),
         fmt_field("⏳", "Срок", f"{tariff['duration_days']} дн"),
         fmt_field("💰", "Цена", f"{tariff['price']}₽"),
         "",
-        "Отправьте скриншот чека после оплаты."
+        "После оплаты отправьте скриншот чека."
     ]
     text = fmt_card("Оплата", lines)
     kb = make_keyboard([("⬅️ Назад", "start")], row_width=1)
+
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
     await state.set_state(states.UserOrderState.WAITING_SCREENSHOT)
     await state.update_data(channel_id=channel_id, tariff_id=tariff_id)
 
 
+# -----------------------------
+# Приём скриншота
+# -----------------------------
 @router.message(states.UserOrderState.WAITING_SCREENSHOT, F.photo)
 async def receive_screenshot(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    channel_id = data.get("channel_id")
-    tariff_id = data.get("tariff_id")
+    channel_id = data["channel_id"]
+    tariff_id = data["tariff_id"]
     user_id = message.from_user.id
-    photo_id = message.photo[-1].file_id
+    photo = message.photo[-1].file_id
 
-    # Обновляем заявку
-    database.update_order_proof(channel_id, user_id, tariff_id, proof_photo_id=photo_id)
+    database.update_order_proof(channel_id, user_id, tariff_id, proof_photo_id=photo)
 
-    # Уведомляем админа
     channel = database.get_channel(channel_id)
     tariff = database.get_tariff(tariff_id)
-    owner = channel["owner_id"]
-    mention = (
-        f"@{message.from_user.username}" if message.from_user.username
-        else f"<a href='tg://user?id={user_id}'>Пользователь</a>"
-    )
+    owner_id = channel["owner_id"]
+    mention = (f"@{message.from_user.username}"
+               if message.from_user.username
+               else f"<a href='tg://user?id={user_id}'>Пользователь</a>")
+
     lines = [
         f"Заявка от {mention} (ID: <code>{user_id}</code>)",
-        fmt_field("📦", "Тариф", tariff['title']),
+        fmt_field("📦", "Тариф", tariff["title"]),
         fmt_field("⏳", "Срок", f"{tariff['duration_days']} дн"),
-        fmt_field("💰", "Цена", f"{tariff['price']}₽")
+        fmt_field("💰", "Цена", f"{tariff['price']}₽"),
     ]
     text = fmt_card("Новая заявка", lines)
     kb = make_keyboard([
@@ -164,49 +180,46 @@ async def receive_screenshot(message: types.Message, state: FSMContext):
         ("❌ Отклонить", f"reject_{channel_id}_{user_id}_{tariff_id}"),
         ("🙊 Без оповещения", f"reject_silent_{channel_id}_{user_id}_{tariff_id}")
     ], row_width=1)
-    await message.bot.send_photo(owner, photo_id, caption=text, parse_mode="HTML", reply_markup=kb)
-    await message.answer("✅ Ваш чек отправлен на проверку.")
+
+    await message.bot.send_photo(owner_id, photo, caption=text,
+                                 parse_mode="HTML", reply_markup=kb)
+    await message.answer("✅ Ваш чек отправлен на проверку.", parse_mode="HTML")
     await state.clear()
 
 
+# -----------------------------
+# /cancel
+# -----------------------------
 @router.message(Command("cancel"))
 async def cmd_cancel(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer("❌ Действие отменено.")
+    await message.answer("❌ Действие отменено.", parse_mode="HTML")
 
 
+# -----------------------------
+# /me — Личный кабинет
+# -----------------------------
 @router.message(Command("me"))
 async def cmd_me(message: types.Message):
     user_id = message.from_user.id
     subs = database.list_user_subscriptions(user_id)
     if not subs:
-        return await message.answer(
-            "ℹ️ У вас нет активных подписок.",
-            parse_mode="HTML"
-        )
+        return await message.answer("ℹ️ У вас нет активных подписок.", parse_mode="HTML")
 
-    # Формируем строки для каждой подписки
-    lines = []
-    buttons = []
     now_ts = int(datetime.now(tz=timezone.utc).timestamp())
+    lines = []
     for s in subs:
         exp_ts = s["expire_at"]
-        # Форматируем дату и дни до окончания
-        exp_dt = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
-        # нужно +3 часа, потому что в UTC+3
-        exp_dt += timedelta(hours=3)
-        days_left = max((exp_ts - now_ts) // 86400, 0)
-        hours_left = (exp_ts - now_ts) // 3600
+        exp_dt = datetime.fromtimestamp(exp_ts, tz=timezone.utc) + timedelta(hours=3)
+        delta = exp_ts - now_ts
+        days_left = delta // 86400
+        hours_left = (delta % 86400) // 3600
         if days_left > 0:
-            exp_dt_str = f"{days_left} дн"
-            if days_left > 1:
-                exp_dt_str += "я"
+            rem = f"{days_left} дн"
         else:
-            exp_dt_str = f"{hours_left % 24} ч"
-        lines.append(
-            fmt_field("📺", s["channel_title"],
-                      f"до {exp_dt.strftime('%d.%m.%Y %H:%M')} ({exp_dt_str})")
-        )
+            rem = f"{hours_left} ч"
+        lines.append(fmt_field("📺", s["channel_title"],
+                               f"до {exp_dt.strftime('%d.%m.%Y %H:%M')} ({rem})"))
 
-    text = fmt_card("Ваши активные подписки", lines)
+    text = fmt_card("Ваши подписки", lines)
     await message.answer(text, parse_mode="HTML")

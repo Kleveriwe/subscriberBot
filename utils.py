@@ -1,9 +1,12 @@
+from typing import List, Tuple
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def fmt_card(title: str, lines: list[str]) -> str:
+def fmt_card(title: str, lines: List[str]) -> str:
     """
-    Оформляет «карточку» сообщения: крупный заголовок + тело.
+    Форматирует «карточку» сообщения:
+    — Заголовок (с эмодзи и жирным шрифтом)
+    — Тело из списка строк.
     """
     header = f"✨ <b>{title}</b> ✨"
     body = "\n".join(lines)
@@ -12,37 +15,38 @@ def fmt_card(title: str, lines: list[str]) -> str:
 
 def fmt_field(emoji: str, label: str, value: str) -> str:
     """
-    Создаёт строку вида:
-    emoji <b>label:</b> value
+    Форматирует строку-поле:
+    emoji + жирный label + value
     """
     return f"{emoji} <b>{label}:</b> {value}"
 
 
 def make_keyboard(
-        buttons: list[tuple[str, str]],
-        row_width: int = 2
+    buttons: List[Tuple[str, str]],
+    row_width: int = 2
 ) -> InlineKeyboardMarkup:
     """
-    Универсальный конструктор inline-клавиатуры.
+    Создаёт InlineKeyboardMarkup из списка кнопок.
 
-    :param buttons: список кортежей (текст, callback_data или URL)
-    :param row_width: максимальное число кнопок в строке
+    :param buttons: список кортежей (текст кнопки, callback_data или URL)
+    :param row_width: максимальное число кнопок в одном ряду
+    :return: InlineKeyboardMarkup
     """
-    rows: list[list[InlineKeyboardButton]] = []
-    chunk: list[InlineKeyboardButton] = []
+    keyboard: List[List[InlineKeyboardButton]] = []
+    row: List[InlineKeyboardButton] = []
 
     for text, target in buttons:
-        if target.startswith("http"):
+        if target.startswith(("http://", "https://")):
             btn = InlineKeyboardButton(text=text, url=target)
         else:
             btn = InlineKeyboardButton(text=text, callback_data=target)
 
-        chunk.append(btn)
-        if len(chunk) == row_width:
-            rows.append(chunk)
-            chunk = []
+        row.append(btn)
+        if len(row) >= row_width:
+            keyboard.append(row)
+            row = []
 
-    if chunk:
-        rows.append(chunk)
+    if row:
+        keyboard.append(row)
 
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
