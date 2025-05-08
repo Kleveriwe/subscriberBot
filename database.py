@@ -75,18 +75,13 @@ def init_db():
 
 def add_or_update_channel(channel_id: int, owner_id: int, title: str, payment_info: str):
     """
-    Вставляет новый канал или обновляет существующий.
+    Вставляет новый канал или обновляет существующий
+    с помощью INSERT OR REPLACE (работает на старых SQLite).
     """
     with get_connection() as conn:
         conn.execute(
-            """
-            INSERT INTO channels(channel_id, owner_id, title, payment_info)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(channel_id) DO UPDATE SET
-                owner_id = excluded.owner_id,
-                title = excluded.title,
-                payment_info = excluded.payment_info
-            """,
+            "INSERT OR REPLACE INTO channels(channel_id, owner_id, title, payment_info) "
+            "VALUES (?, ?, ?, ?)",
             (channel_id, owner_id, title, payment_info)
         )
         conn.commit()
