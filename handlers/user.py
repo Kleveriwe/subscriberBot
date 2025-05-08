@@ -35,7 +35,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     greeting = fmt_card(
         "Привет!",
         [
-            "Я помогу вам купить подписку на закрытый канал.",
+            "Я занимаюсь продажей подписок.",
             "",
             fmt_field("➕", "Добавить свой канал", "для продажи подписок"),
         ]
