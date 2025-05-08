@@ -66,6 +66,15 @@ def init_db():
                     ON DELETE CASCADE
             )
         """)
+        c.execute("""
+                PRAGMA table_info(subscriptions)
+            """)
+        cols = [row[1] for row in c.fetchall()]  # извлечём список колонок
+        if "reminded_1h" not in cols:
+            c.execute("""
+                    ALTER TABLE subscriptions
+                    ADD COLUMN reminded_1h INTEGER NOT NULL DEFAULT 0
+                """)
         conn.commit()
 
 
@@ -110,6 +119,7 @@ def list_channels_of_owner(owner_id: int) -> list[dict]:
             (owner_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
 
 def update_channel_payment_info(channel_id, new_info):
     with get_connection() as conn:
@@ -253,17 +263,39 @@ def reject_order(channel_id: int, user_id: int, tariff_id: int, reason: str):
 # -----------------------------
 
 def add_subscription(channel_id: int, user_id: int, duration_days: int):
-    """
-    Добавляет запись о подписке с вычислением времени истечения.
-    """
-    expire_at = int(time.time()) + duration_days * 86400
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO subscriptions(channel_id, user_id, expire_at)"
-            " VALUES (?, ?, ?)",
-            (channel_id, user_id, expire_at)
-        )
-        conn.commit()
+    now = int(time.time())
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Смотрим, была ли уже подписка
+    cursor.execute("""
+        SELECT expire_at
+        FROM subscriptions
+        WHERE channel_id = ? AND user_id = ?
+    """, (channel_id, user_id))
+    row = cursor.fetchone()
+
+    if row:
+        old_expire = row["expire_at"]
+        base = old_expire if old_expire > now else now
+        new_expire = base + duration_days * 24 * 3600
+        cursor.execute("""
+            UPDATE subscriptions
+               SET expire_at    = ?,
+                   reminded_1h  = 0
+             WHERE channel_id   = ?
+               AND user_id      = ?
+        """, (new_expire, channel_id, user_id))
+    else:
+        new_expire = now + duration_days * 24 * 3600
+        cursor.execute("""
+            INSERT INTO subscriptions(
+                channel_id, user_id, expire_at, reminded_1h
+            ) VALUES (?, ?, ?, 0)
+        """, (channel_id, user_id, new_expire))
+
+    conn.commit()
+    conn.close()
 
 
 def get_expired_subscriptions() -> list[tuple[int, int]]:
@@ -288,4 +320,70 @@ def remove_subscription(channel_id: int, user_id: int):
             "DELETE FROM subscriptions WHERE channel_id=? AND user_id=?",
             (channel_id, user_id)
         )
+        conn.commit()
+
+
+def list_user_subscriptions(user_id: int) -> list[dict]:
+    """
+    Возвращает список активных подписок пользователя:
+    [
+      {
+        "channel_id":   -1001234567890,
+        "channel_title":"Мой Канал",
+        "expire_at":    1700000000
+      },
+      …
+    ]
+    """
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT s.channel_id,
+                   c.title     AS channel_title,
+                   s.expire_at
+            FROM subscriptions AS s
+            JOIN channels AS c
+              ON s.channel_id = c.channel_id
+            WHERE s.user_id = ?
+            ORDER BY s.expire_at ASC
+        """, (user_id,)).fetchall()
+
+    result = []
+    for r in rows:
+        result.append({
+            "channel_id": r["channel_id"],
+            "channel_title": r["channel_title"],
+            "expire_at": r["expire_at"],
+        })
+    return result
+
+
+def get_expiring_subscriptions_1h():
+    """
+    Возвращает подписки, у которых expire_at ∈ (now, now+1ч]
+       и по которым ещё не слали напоминание (reminded_1h = 0).
+    """
+    now = int(time.time())
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT channel_id, user_id, expire_at
+            FROM subscriptions
+            WHERE expire_at > ?
+              AND expire_at <= ?
+              AND reminded_1h = 0
+        """, (now, now + 3600)).fetchall()
+
+    return [(r["channel_id"], r["user_id"], r["expire_at"]) for r in rows]
+
+
+def mark_subscription_reminded(channel_id: int, user_id: int):
+    """
+    Помечает подписку (channel_id, user_id)
+    как уже получившую 1-часовое напоминание.
+    """
+    with get_connection() as conn:
+        conn.execute("""
+            UPDATE subscriptions
+               SET reminded_1h = 1
+             WHERE channel_id = ? AND user_id = ?
+        """, (channel_id, user_id))
         conn.commit()

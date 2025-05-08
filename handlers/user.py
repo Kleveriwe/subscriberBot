@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 
 import database
 import states
+from datetime import datetime, timezone, timedelta
 from utils import fmt_card, fmt_field, make_keyboard
 
 router = Router()
@@ -172,3 +173,40 @@ async def receive_screenshot(message: types.Message, state: FSMContext):
 async def cmd_cancel(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ Действие отменено.")
+
+
+@router.message(Command("me"))
+async def cmd_me(message: types.Message):
+    user_id = message.from_user.id
+    subs = database.list_user_subscriptions(user_id)
+    if not subs:
+        return await message.answer(
+            "ℹ️ У вас нет активных подписок.",
+            parse_mode="HTML"
+        )
+
+    # Формируем строки для каждой подписки
+    lines = []
+    buttons = []
+    now_ts = int(datetime.now(tz=timezone.utc).timestamp())
+    for s in subs:
+        exp_ts = s["expire_at"]
+        # Форматируем дату и дни до окончания
+        exp_dt = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
+        # нужно +3 часа, потому что в UTC+3
+        exp_dt += timedelta(hours=3)
+        days_left = max((exp_ts - now_ts) // 86400, 0)
+        hours_left = (exp_ts - now_ts) // 3600
+        if days_left > 0:
+            exp_dt_str = f"{days_left} дн"
+            if days_left > 1:
+                exp_dt_str += "я"
+        else:
+            exp_dt_str = f"{hours_left % 24} ч"
+        lines.append(
+            fmt_field("📺", s["channel_title"],
+                      f"до {exp_dt.strftime('%d.%m.%Y %H:%M')} ({exp_dt_str})")
+        )
+
+    text = fmt_card("Ваши активные подписки", lines)
+    await message.answer(text, parse_mode="HTML")
