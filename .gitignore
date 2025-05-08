@@ -1,4 +1,10 @@
 /.venv
 /.idea
 *.db
-/.env
+
+__pycache__/
+*.py[cod]
+.env
+.vscode/
+venv/
+EOF
