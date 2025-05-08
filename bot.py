@@ -1,22 +1,33 @@
 import asyncio
+import logging
+from aiogram.client.bot import DefaultBotProperties
+from aiogram import Bot, Dispatcher
 import config
 import database
-import logging
 
-from aiogram import Bot, Dispatcher
 from handlers import admin, user
 from services.subscriptions import check_subscriptions
 
 
 async def main():
+    # Настройка логирования
     logging.basicConfig(level=logging.INFO)
-    bot = Bot(token=config.BOT_TOKEN, defaults={"parse_mode": "HTML"})
+
+    # Инициализация бота
+    bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
+
+    # Инициализация БД
     database.init_db()
+
+    # Регистрация роутеров
     dp.include_router(admin.router)
     dp.include_router(user.router)
-    # фон
+
+    # Фоновая задача для проверки истекших подписок
     asyncio.create_task(check_subscriptions(bot))
+
+    # Запуск polling
     await dp.start_polling(bot, skip_updates=True)
 
 

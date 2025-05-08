@@ -2,20 +2,20 @@ from aiogram.fsm.state import StatesGroup, State
 
 
 class AddChannelState(StatesGroup):
-    waiting_username = State()  # ввод ссылки/ID канала
-    waiting_payment_info = State()  # ввод реквизитов
+    waiting_username = State()  # Ожидаем @username, ссылку или ID канала
+    waiting_payment_info = State()  # Ожидаем реквизиты для оплаты
 
 
 class AddTariffState(StatesGroup):
-    WAITING_TITLE = State()  # название тарифа
-    WAITING_DURATION = State()  # дни
-    WAITING_PRICE = State()  # цена
+    WAITING_TITLE = State()  # Ожидаем название тарифа
+    WAITING_DURATION = State()  # Ожидаем длительность (дней)
+    WAITING_PRICE = State()  # Ожидаем цену (рублей)
 
 
 class UserOrderState(StatesGroup):
-    WAITING_CHANNEL_ID = State()  # ввод ID канала (если не deep-link)
-    WAITING_SCREENSHOT = State()  # ожидание чека
+    WAITING_CHANNEL_ID = State()  # Ожидаем ID канала (если не через deep-link)
+    WAITING_SCREENSHOT = State()  # Ожидаем скриншот чека
 
 
 class AdminRejectionState(StatesGroup):
-    WAITING_REASON = State()  # ввод причины отклонения
+    WAITING_REASON = State()  # Ожидаем текст причины отклонения
