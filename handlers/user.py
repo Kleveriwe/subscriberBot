@@ -119,9 +119,9 @@ async def show_tariffs_for_channel(message: types.Message, channel_id: int):
 @router.callback_query(F.data.startswith("buy_"))
 async def callback_buy(callback: types.CallbackQuery, state: FSMContext):
     try:
-        ch_str, tr_str = parse_cd(callback.data, "buy_", parts=1)[0].split("_", 1)
-        channel_id = int(ch_str)
-        tariff_id = int(tr_str)
+        channel_str, tariff_str = parse_cd(callback.data, prefix="buy_", parts=2)
+        channel_id = int(channel_str)
+        tariff_id = int(tariff_str)
     except Exception:
         return await callback.answer("❗ Ошибка данных", show_alert=True)
 
