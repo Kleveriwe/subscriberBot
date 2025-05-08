@@ -51,10 +51,10 @@ async def enter_admin_channel(callback: types.CallbackQuery, state: FSMContext):
         ("❌ Отмена", "cancel_admin")
     ], row_width=1)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    await state.set_state(states.AddChannelState.waiting_username)
+    await state.set_state(states.AddChannelState.WAITING_USERNAME)
 
 
-@router.message(states.AddChannelState.waiting_username)
+@router.message(states.AddChannelState.WAITING_USERNAME)
 async def process_channel_username(message: types.Message, state: FSMContext):
     raw = message.text.strip()
     cleaned = raw.replace("https://t.me/", "").replace("t.me/", "").strip()
@@ -87,10 +87,10 @@ async def process_channel_username(message: types.Message, state: FSMContext):
         ("❌ Отмена", "cancel_admin")
     ], row_width=1)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
-    await state.set_state(states.AddChannelState.waiting_payment_info)
+    await state.set_state(states.AddChannelState.WAITING_PAYMENT_INFO)
 
 
-@router.message(states.AddChannelState.waiting_payment_info)
+@router.message(states.AddChannelState.WAITING_PAYMENT_INFO)
 async def process_payment_info(message: types.Message, state: FSMContext):
     data = await state.get_data()
     channel_id = data["channel_id"]
@@ -137,17 +137,70 @@ async def cmd_my_channels(message: types.Message):
 async def channel_menu(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     channel_id = int(callback.data.split("_", 2)[2])
+    channel_info = database.get_channel(channel_id)
+    payment = f'<code>{channel_info["payment_info"]}</code>'
+
     # Основное меню канала
     deep_link = f"https://t.me/{(await callback.bot.me()).username}?start={channel_id}"
+    # markdown_link = f"<a href=\"{deep_link}\">Купить!</a>"
     lines = [fmt_field("🆔", "ID канала", str(channel_id)),
-             fmt_field("🔗", "Ссылка для пользователя", f"<code>{deep_link}</code>")]
+             fmt_field("🛒", "Реквизиты для оплаты", payment),
+             fmt_field("🔗", "Ссылка для пользователя", f"<code>{deep_link}</code>")
+             # fmt_field("🔗", "Ещё ссылка", markdown_link)
+             ]
     text = fmt_card("Меню канала", lines)
     kb = make_keyboard([
+        ("🔄 Обновить реквизиты", f"update_payment_info_{channel_id}"),
         ("➕ Добавить тариф", f"add_tariff_{channel_id}"),
         ("📄 Список тарифов", f"list_tariffs_{channel_id}"),
+        ("🗑 Удалить канал", f"del_channel_{channel_id}"),
         ("❌ Закрыть", "close_menu")
-    ], row_width=1)
+    ], row_width=2)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("update_payment_info_"))
+async def update_payment_info_start(callback: types.CallbackQuery, state: FSMContext):
+    channel_id = int(callback.data.removeprefix("update_payment_info_"))
+    await state.update_data(channel_id=channel_id)
+    await state.set_state(states.UpdatePaymentState.WAITING_NEW_PAYMENT_INFO)
+    await callback.message.edit_text(
+        fmt_card("Обновить реквизиты", ["Пожалуйста, отправьте новые реквизиты для оплаты."]),
+        parse_mode="HTML",
+        reply_markup=make_keyboard([("❌ Отмена", "channel_menu_" + str(channel_id))], row_width=1)
+    )
+    await callback.answer()
+
+
+@router.message(states.UpdatePaymentState.WAITING_NEW_PAYMENT_INFO, F.text)
+async def process_new_payment_info(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    channel_id = data.get("channel_id")
+    new_info = message.text.strip()
+
+    # Обновляем в БД
+    database.update_channel_payment_info(channel_id, new_info)
+
+    # Подтверждаем администратору
+    await message.answer(
+        fmt_card("Реквизиты обновлены", [
+            f"Новые реквизиты для канала ID {channel_id}:",
+            new_info
+        ]),
+        parse_mode="HTML",
+        reply_markup=make_keyboard([("⬅️ Назад", f"channel_menu_{channel_id}")], row_width=1)
+    )
+
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("del_channel_"))
+async def del_channel(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    channel_id = int(callback.data.removeprefix("del_channel_"))
+    database.delete_channel(channel_id)
+    await callback.message.edit_text("ℹ️ Канал удалён.", parse_mode="HTML")
     await callback.answer()
 
 

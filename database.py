@@ -111,6 +111,28 @@ def list_channels_of_owner(owner_id: int) -> list[dict]:
         ).fetchall()
         return [dict(r) for r in rows]
 
+def update_channel_payment_info(channel_id, new_info):
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE channels SET payment_info = ? WHERE channel_id = ?",
+            (new_info, channel_id)
+        )
+        conn.commit()
+
+    return
+
+
+def delete_channel(channel_id: int):
+    """
+    Удаляет канал по его ID.
+    """
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM channels WHERE channel_id = ?",
+            (channel_id,)
+        )
+        conn.commit()
+
 
 # -----------------------------
 # Тарифы

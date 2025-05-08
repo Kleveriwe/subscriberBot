@@ -2,8 +2,8 @@ from aiogram.fsm.state import StatesGroup, State
 
 
 class AddChannelState(StatesGroup):
-    waiting_username = State()  # Ожидаем @username, ссылку или ID канала
-    waiting_payment_info = State()  # Ожидаем реквизиты для оплаты
+    WAITING_USERNAME = State()  # Ожидаем @username, ссылку или ID канала
+    WAITING_PAYMENT_INFO = State()  # Ожидаем реквизиты для оплаты
 
 
 class AddTariffState(StatesGroup):
@@ -19,3 +19,7 @@ class UserOrderState(StatesGroup):
 
 class AdminRejectionState(StatesGroup):
     WAITING_REASON = State()  # Ожидаем текст причины отклонения
+
+
+class UpdatePaymentState(StatesGroup):
+    WAITING_NEW_PAYMENT_INFO = State()

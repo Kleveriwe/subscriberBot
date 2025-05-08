@@ -114,7 +114,7 @@ async def callback_buy(callback: types.CallbackQuery, state: FSMContext):
     database.create_order(channel_id, user_id, tariff_id)
     channel = database.get_channel(channel_id)
     tariff = database.get_tariff(tariff_id)
-    payment = channel.get("payment_info", "")
+    # payment = channel.get("payment_info", "")
     lines = [
         f"Реквизиты: <code>{channel['payment_info']}</code>",
         "",
