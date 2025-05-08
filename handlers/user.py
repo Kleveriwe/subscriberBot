@@ -92,7 +92,7 @@ async def show_tariffs_for_channel(message: types.Message, channel_id: int):
     lines = [fmt_field("💎", t["title"], f"{t['duration_days']} дн — {t['price']}₽") for t in tariffs]
     text = fmt_card(f"Тарифы канала «{channel['title']}»", lines)
     kb = make_keyboard(
-        [(f"Купить: {t['title']}", f"buy_{channel_id}_{t['id']}") for t in tariffs],
+        [(f"{t['title']}", f"buy_{channel_id}_{t['id']}") for t in tariffs],
         row_width=1
     )
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
