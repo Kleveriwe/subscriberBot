@@ -444,4 +444,4 @@ async def cmd_id(message: types.Message):
         )
         await message.delete()
     else:
-        await message.answer("❗ Используйте эту команду в канале или супергруппе.", parse_mode="HTML")
+        await message.answer("❗ Используйте эту команду в канале.", parse_mode="HTML")

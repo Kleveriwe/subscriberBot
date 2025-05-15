@@ -1,11 +1,11 @@
 import asyncio
+import config
+import database
 import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.bot import DefaultBotProperties
 
-import config
-import database
 from handlers import admin, user
 from services.subscriptions import check_subscriptions
 

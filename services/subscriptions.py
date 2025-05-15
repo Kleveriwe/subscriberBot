@@ -1,12 +1,10 @@
 import asyncio
+import database
 import logging
 import time
-from typing import Tuple, List
-
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-import database
+from typing import Tuple, List
 
 
 async def check_subscriptions(bot: Bot, interval: int = 60) -> None:

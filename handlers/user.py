@@ -112,6 +112,18 @@ async def show_tariffs_for_channel(message: types.Message, channel_id: int):
     )
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
+@router.callback_query(F.data.startswith("back_to_tariffs_"))
+async def back_to_tariffs(callback: types.CallbackQuery, state: FSMContext):
+    # Извлекаем channel_id
+    channel_id = int(callback.data.removeprefix("back_to_tariffs_"))
+
+    # Убираем «часики» и удаляем текущее сообщение
+    await callback.answer()
+    await callback.message.delete()
+
+    # Сбрасывать состояние не нужно,
+    # просто выводим снова список тарифов
+    await show_tariffs_for_channel(callback.message, channel_id)
 
 # -----------------------------
 # Покупка тарифа
@@ -140,7 +152,7 @@ async def callback_buy(callback: types.CallbackQuery, state: FSMContext):
         "После оплаты отправьте скриншот чека."
     ]
     text = fmt_card("Оплата", lines)
-    kb = make_keyboard([("⬅️ Назад", "start")], row_width=1)
+    kb = make_keyboard([("⬅️ Назад", f"back_to_tariffs_{channel_id}")], row_width=1)
 
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
