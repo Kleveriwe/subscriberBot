@@ -47,7 +47,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # Обычное приветствие
     bot_username = (await message.bot.me()).username
     text = fmt_card(
-        "Привет!",
+        f"Привет, я {bot_username}!",
         [
             "Я помогу вам купить доступ в закрытый канал.",
             "",
@@ -113,7 +113,7 @@ async def show_tariffs_for_channel(message: types.Message, channel_id: int):
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 @router.callback_query(F.data.startswith("back_to_tariffs_"))
-async def back_to_tariffs(callback: types.CallbackQuery, state: FSMContext):
+async def back_to_tariffs(callback: types.CallbackQuery):
     # Извлекаем channel_id
     channel_id = int(callback.data.removeprefix("back_to_tariffs_"))
 

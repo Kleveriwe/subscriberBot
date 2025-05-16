@@ -28,7 +28,7 @@ def make_keyboard(
     """
     Создаёт InlineKeyboardMarkup из списка кнопок.
 
-    :param buttons: список кортежей (текст кнопки, callback_data или URL)
+    :param buttons: Список кортежей (текст кнопки, callback_data или URL)
     :param row_width: максимальное число кнопок в одном ряду
     :return: InlineKeyboardMarkup
     """
