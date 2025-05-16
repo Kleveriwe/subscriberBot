@@ -45,9 +45,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
             )
 
     # Обычное приветствие
-    bot_username = (await message.bot.me()).username
+    bot_first_name = (await message.bot.me()).first_name
     text = fmt_card(
-        f"Привет, я {bot_username}!",
+        f"Привет, я {bot_first_name}!",
         [
             "Я помогу вам купить доступ в закрытый канал.",
             "",
