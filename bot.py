@@ -21,7 +21,7 @@ async def main():
         token=config.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode="HTML")
     )
-    dp  = Dispatcher()
+    dp = Dispatcher()
 
     # include routers
     dp.include_router(admin.router)

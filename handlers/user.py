@@ -112,6 +112,7 @@ async def show_tariffs_for_channel(message: types.Message, channel_id: int):
     )
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
+
 @router.callback_query(F.data.startswith("back_to_tariffs_"))
 async def back_to_tariffs(callback: types.CallbackQuery):
     # Извлекаем channel_id
@@ -124,6 +125,7 @@ async def back_to_tariffs(callback: types.CallbackQuery):
     # Сбрасывать состояние не нужно,
     # просто выводим снова список тарифов
     await show_tariffs_for_channel(callback.message, channel_id)
+
 
 # -----------------------------
 # Покупка тарифа
